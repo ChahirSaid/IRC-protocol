@@ -15,15 +15,17 @@
 #include <fcntl.h>
 #include <cerrno>
 #include <stdexcept>
-
+#include "CommandDispatcher.hpp"
 
 class Server {
     private:
         int listen_fd;
         uint16_t port;
         std::string password;
+        std::string serverName;
         std::vector<pollfd>poll_fds;
         std::map<int, Client> clients;
+        CommandDispatcher dispatcher;
         
         static const size_t BUFFER_SIZE = 1024;
     private:
@@ -39,38 +41,13 @@ class Server {
         //Execution
         void pollLoop();
     public:
-        Server(uint16_t port, std::string password);
+        Server(uint16_t port,const std::string &password, const std::string &serverName);
         ~Server();
         void start();
+        const std::string& getPassword() const;
+        const std::string& getServerName() const;
 };
 
 #endif
 
 
-/* 
- * Server
-│
-├── Data
-│   ├── listen_fd
-│   ├── server_addr
-│   ├── port
-│   ├── poll_fds
-│   └── BUFFER_SIZE
-│
-├── Setup
-│   ├── createSocket()
-│   ├── setNonBlocking()
-│   ├── bindSocket()
-│   └── startListening()
-│
-├── Client Management
-│   ├── acceptClient()
-│   ├── receiveData()
-│   ├── sendData()
-│   └── removeClient()
-│
-└── Execution
-    ├── pollLoop()
-    └── start()
-
-*/

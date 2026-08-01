@@ -1,5 +1,5 @@
-#include "Server.hpp"
-
+#include "../include/Server.hpp"
+#include "../include/Command.hpp"
 
 void Server::createsocket(){
     listen_fd = socket(AF_INET , SOCK_STREAM , 0);
@@ -75,12 +75,8 @@ bool Server::receiveData(size_t index){
     c.appendData(std::string(buff, n));
     while (c.hasCompleteLine()){
         std::string line = c.popLine();
-        ssize_t i = send(c.getFd(), line.c_str(), line.size() , 0);
-        if (i == -1)
-        {
-            removeClient(index);
-            return true;
-        }
+        Command cmd = Command::parse(line);
+        dispatcher.execute(*this, c, cmd);
     }
     if (c.exceedsLimit())
     {
@@ -119,7 +115,7 @@ void Server::pollLoop(){
     }
 }
 
-Server::Server(uint16_t port, std::string password):listen_fd(-1), port(port), password(password){
+Server::Server(uint16_t port,const std::string &password, const std::string &serverName):listen_fd(-1), port(port), password(password), serverName(serverName){
 }
 
 
