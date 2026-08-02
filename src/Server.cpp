@@ -21,6 +21,7 @@ void Server::bindSocket(){
     std::memset(&addr, 0, sizeof(addr));
     addr.sin_family = AF_INET;
     addr.sin_port = htons(port);
+    addr.sin_addr.s_addr = htonl(INADDR_ANY);
     int opt = 1;
     if (setsockopt(listen_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0)
         throw std::runtime_error(std::string("setsocketopt :") + std::strerror(errno));
@@ -36,25 +37,35 @@ void Server::startListening(){
 
 
 void Server::acceptClient(){
-    struct sockaddr_in client_addr;
-    socklen_t len = sizeof(client_addr);
-    int fd = accept(listen_fd, (struct sockaddr *) &client_addr, &len);
-    if (fd < 0)
-        return ;
-    try{
-        setNonBlocking(fd);
+    while (true)
+    {
+        struct sockaddr_in client_addr;
+        socklen_t len = sizeof(client_addr);
+        int fd = accept(listen_fd, (struct sockaddr *) &client_addr, &len);
+        if (fd < 0)
+        {
+            if (errno == EINTR)
+                continue;
+            if (errno == EAGAIN || errno == EWOULDBLOCK)
+                return;
+            std::cerr << "accept: " << std::strerror(errno) << std::endl;
+            return;
+        }
+        try{
+            setNonBlocking(fd);
+        }
+        catch(std::exception &e){
+            std::cerr << e.what() << std::endl;
+            close(fd);
+            continue;
+        }
+        pollfd client;
+        client.events = POLLIN;
+        client.fd = fd;
+        client.revents = 0;
+        clients.insert(std::pair<int , Client>(fd, Client(fd)));
+        poll_fds.push_back(client);
     }
-    catch(std::exception &e){
-        std::cerr << e.what() << std::endl;
-        close(fd);
-        return;
-    }
-    pollfd client;
-    client.events = POLLIN;
-    client.fd = fd;
-    client.revents = 0;
-    clients.insert(std::pair<int , Client>(fd, Client(fd)));
-    poll_fds.push_back(client);
 }
 
 bool Server::receiveData(size_t index){
@@ -75,19 +86,52 @@ bool Server::receiveData(size_t index){
     c.appendData(std::string(buff, n));
     while (c.hasCompleteLine()){
         std::string line = c.popLine();
+        if (line.empty())
+            continue;
+        if (line.size() + 2 > 512)
+        {
+            std::string msg = "ERROR :Closing Link: Input line exceeds 512 bytes\r\n";
+            send(c.getFd(), msg.c_str(), msg.size(), MSG_NOSIGNAL);
+            removeClient(index);
+            return true;
+        }
         Command cmd = Command::parse(line);
         dispatcher.execute(*this, c, cmd);
     }
     if (c.exceedsLimit())
     {
         std::string msg = "ERROR :Closing Link: Input line exceeds 512 bytes\r\n";
-        send(c.getFd() , msg.c_str(), msg.size(), 0);
+        send(c.getFd(), msg.c_str(), msg.size(), MSG_NOSIGNAL);
         removeClient(index);
         return true;
     }
     return false;
 }
-//void sendData();
+
+bool Server::flushOutput(size_t index)
+{
+    int fd = poll_fds[index].fd;
+    std::map<int, Client>::iterator it = clients.find(fd);
+    if (it == clients.end())
+        return false;
+
+    Client& client = it->second;
+    ssize_t sent = send(fd, client.getOutput().c_str(),
+                        client.getOutput().size(), MSG_NOSIGNAL);
+    if (sent > 0)
+    {
+        client.removeSentOutput(static_cast<size_t>(sent));
+        if (!client.hasOutput())
+            poll_fds[index].events &= ~POLLOUT;
+        return false;
+    }
+    if (sent < 0 && (errno == EAGAIN || errno == EWOULDBLOCK))
+        return false;
+
+    removeClient(index);
+    return true;
+}
+
 void Server::removeClient(size_t index){
     close(poll_fds[index].fd);
     clients.erase(poll_fds[index].fd);
@@ -96,20 +140,39 @@ void Server::removeClient(size_t index){
 void Server::pollLoop(){
     while (true)
     {
-        if (poll(&poll_fds[0], poll_fds.size(), -1) < 0)
+        if (poll_fds.empty())
+            throw std::runtime_error("poll: no file descriptors to monitor");
+        int pollResult;
+        do {
+            pollResult = poll(&poll_fds[0], poll_fds.size(), -1);
+        } while (pollResult < 0 && errno == EINTR);
+        if (pollResult < 0)
             throw std::runtime_error(std::string("poll: ") + std::strerror(errno));
         for (size_t i = 0; i < poll_fds.size(); i++){
             if (poll_fds[i].revents & (POLLERR | POLLHUP | POLLNVAL)){
                 removeClient(i);
+                if (i > 0)
                     i--;
+                continue;
             }
             else if (poll_fds[i].revents & POLLIN){
                 if (poll_fds[i].fd == listen_fd)
                     acceptClient();
                 else{
                     if (receiveData(i))
-                        i--;
+                    {
+                        if (i > 0)
+                            i--;
+                        continue;
+                    }
                 }
+            }
+            if (i < poll_fds.size() &&
+                poll_fds[i].fd != listen_fd &&
+                (poll_fds[i].revents & POLLOUT) && flushOutput(i))
+            {
+                if (i > 0)
+                    i--;
             }
         }
     }
@@ -120,12 +183,17 @@ Server::Server(uint16_t port,const std::string &password, const std::string &ser
 
 
 Server::~Server(){
+    bool listenClosed = false;
     for (size_t i = 0; i < poll_fds.size(); i++)
     {
         if (poll_fds[i].fd == -1)
             continue;
+        if (poll_fds[i].fd == listen_fd)
+            listenClosed = true;
         close(poll_fds[i].fd);
     }
+    if (listen_fd != -1 && !listenClosed)
+        close(listen_fd);
 }
 
 void Server::start(){
@@ -142,4 +210,71 @@ void Server::start(){
     poll_fds.push_back(serverPollFd);
 
     pollLoop();
+}
+
+const std::string& Server::getPassword() const
+{
+    return password;
+}
+
+uint16_t Server::getPort() const
+{
+    return port;
+}
+
+const std::string& Server::getServerName() const
+{
+    return serverName;
+}
+
+bool Server::sendToClient(Client& client, const std::string& message)
+{
+    client.appendOutput(message);
+    for (size_t i = 0; i < poll_fds.size(); ++i)
+    {
+        if (poll_fds[i].fd == client.getFd())
+        {
+            poll_fds[i].events |= POLLOUT;
+            return true;
+        }
+    }
+    return false;
+}
+
+char Server::normalizeNicknameChar(char c)
+{
+    if (c >= 'A' && c <= 'Z')
+        return c - 'A' + 'a';
+    if (c == '{')
+        return '[';
+    if (c == '}')
+        return ']';
+    if (c == '|')
+        return '\\';
+    if (c == '~')
+        return '^';
+    return c;
+}
+
+bool Server::isNicknameInUse(const std::string& nickname, int exceptFd) const
+{
+    for (std::map<int, Client>::const_iterator it = clients.begin();
+         it != clients.end(); ++it)
+    {
+        const std::string& existing = it->second.getNickname();
+        if (it->first == exceptFd || existing.size() != nickname.size())
+            continue;
+        bool matches = true;
+        for (std::string::size_type i = 0; i < nickname.size(); ++i)
+        {
+            if (normalizeNicknameChar(existing[i]) != normalizeNicknameChar(nickname[i]))
+            {
+                matches = false;
+                break;
+            }
+        }
+        if (matches)
+            return true;
+    }
+    return false;
 }

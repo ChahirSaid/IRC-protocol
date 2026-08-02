@@ -21,14 +21,38 @@ void Client::appendData(const std::string& data){
 }
 
 bool Client::exceedsLimit() const{
-    if (inbuffer.size() > 512)
-        return true;
-    return false;
+    return inbuffer.size() > 510 &&
+           (inbuffer.size() != 511 || inbuffer[inbuffer.size() - 1] != '\r');
+}
+
+void Client::appendOutput(const std::string& data)
+{
+    outbuffer += data;
+}
+
+bool Client::hasOutput() const
+{
+    return !outbuffer.empty();
+}
+
+const std::string& Client::getOutput() const
+{
+    return outbuffer;
+}
+
+void Client::removeSentOutput(size_t count)
+{
+    outbuffer.erase(0, count);
 }
 
 bool Client::isRegistered() const
 {
     return authenticated && hasNick && hasUser;
+}
+
+bool Client::isAuthenticated() const
+{
+    return authenticated;
 }
 
 void Client::setAuthenticated(bool value)

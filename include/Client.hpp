@@ -7,6 +7,7 @@ class Client {
     private:
         int fd;
         std::string inbuffer;
+        std::string outbuffer;
         // Registration state
         bool authenticated;
         bool hasNick;
@@ -23,6 +24,11 @@ class Client {
         std::string popLine();
         void appendData(const std::string& data);
         bool exceedsLimit() const;
+
+        void appendOutput(const std::string& data);
+        bool hasOutput() const;
+        const std::string& getOutput() const;
+        void removeSentOutput(size_t count);
         
         // Registration
         bool isAuthenticated() const;

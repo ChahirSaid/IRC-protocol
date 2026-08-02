@@ -19,25 +19,20 @@ private:
 
 public:
     CommandDispatcher();
+    ~CommandDispatcher();
 
     void execute(Server& server,
                  Client& client,
                  const Command& command);
 
 private:
+    static bool isValidNickname(const std::string& nickname);
+    static void welcomeIfRegistered(Server& server, Client& client,
+                                    bool wasRegistered);
+
     void handlePASS(Server&, Client&, const Command&);
     void handleNICK(Server&, Client&, const Command&);
     void handleUSER(Server&, Client&, const Command&);
-
-    // later
-    void handleJOIN(Server&, Client&, const Command&);
-    void handlePART(Server&, Client&, const Command&);
-    void handlePRIVMSG(Server&, Client&, const Command&);
-    void handleQUIT(Server&, Client&, const Command&);
-    void handleMODE(Server&, Client&, const Command&);
-    void handleTOPIC(Server&, Client&, const Command&);
-    void handleKICK(Server&, Client&, const Command&);
-    void handleINVITE(Server&, Client&, const Command&);
 };
 
 
