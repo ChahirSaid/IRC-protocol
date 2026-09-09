@@ -1,0 +1,13 @@
+# Build output
+object/
+*.o
+
+# Binaries
+ircserv
+ircbot
+
+# IDE and OS files
+.vscode/
+.idea/
+*.DS_Store
+*.dSYM/

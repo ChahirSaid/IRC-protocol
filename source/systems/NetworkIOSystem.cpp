@@ -105,12 +105,18 @@ void NetworkIOSystem::run()
 
 			if(_pollFDs[index].revents & POLLIN)
 			{
+				size_t sizeBefore = _pollFDs.size();
 				_handleClientRead(index);
 
-				continue;
+				if(_pollFDs.size() < sizeBefore)
+				{
+					index--;
+
+					continue;
+				}
 			}
 
-			if(_pollFDs[index].revents & POLLOUT)
+			if(index < _pollFDs.size() && (_pollFDs[index].revents & POLLOUT))
 			{
 				_handleClientWrite(index);
 			}

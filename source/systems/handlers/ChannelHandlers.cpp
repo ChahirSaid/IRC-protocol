@@ -11,6 +11,8 @@ static void queueChannelError(Server& server, Entity client, const std::string& 
 	{
 		server.getNetworkIOSystem().queueMessage(networkConnectionComponent->clientFD, message);
 	}
+
+	return;
 }
 
 void CommandSystem::_handleJOIN(Entity client, const IRCMessage& message)
@@ -113,18 +115,64 @@ void CommandSystem::_handleJOIN(Entity client, const IRCMessage& message)
 
 	channelRosterComponent->members.push_back(client);
 
-	std::string broadcastMessage = ":" + clientProfileComponent->nickname + " JOIN :" + targetChannelName;
+	NetworkConnectionComponent* networkConnectionComponent = _server.getEntityManager().getNetworkConnectionComponent(client);
+
+	std::string broadcastMessage = ":" + clientProfileComponent->nickname;
+
+	if(networkConnectionComponent)
+	{
+		broadcastMessage += "!" + clientProfileComponent->username + "@" + networkConnectionComponent->ipAddress;
+	}
+	broadcastMessage += " JOIN :" + targetChannelName;
 
 	for(size_t memberIndex = 0; memberIndex < channelRosterComponent->members.size(); memberIndex++)
 	{
 		Entity memberClient = channelRosterComponent->members[memberIndex];
-
 		NetworkConnectionComponent* memberNetworkConnectionComponent = _server.getEntityManager().getNetworkConnectionComponent(memberClient);
 
 		if(memberNetworkConnectionComponent)
 		{
 			_server.getNetworkIOSystem().queueMessage(memberNetworkConnectionComponent->clientFD, broadcastMessage);
 		}
+	}
+
+	if(networkConnectionComponent)
+	{
+		if(!channelConfigComponent->topic.empty())
+		{
+			std::string topicReply = ":ircserv 332 " + clientProfileComponent->nickname + " " + targetChannelName + " :" + channelConfigComponent->topic;
+			_server.getNetworkIOSystem().queueMessage(networkConnectionComponent->clientFD, topicReply);
+		}
+
+		std::string namesList = "";
+
+		for(size_t memberIndex = 0; memberIndex < channelRosterComponent->members.size(); memberIndex++)
+		{
+			Entity memberClient = channelRosterComponent->members[memberIndex];
+			ClientProfileComponent* memberProfile = _server.getEntityManager().getClientProfileComponent(memberClient);
+
+			if(!memberProfile || memberProfile->nickname.empty())
+			{
+				continue;
+			}
+
+			if(!namesList.empty())
+			{
+				namesList += " ";
+			}
+
+			if(std::find(channelRosterComponent->operators.begin(), channelRosterComponent->operators.end(), memberClient) != channelRosterComponent->operators.end())
+			{
+				namesList += "@";
+			}
+			namesList += memberProfile->nickname;
+		}
+
+		std::string nameReply = ":ircserv 353 " + clientProfileComponent->nickname + " = " + targetChannelName + " :" + namesList;
+		_server.getNetworkIOSystem().queueMessage(networkConnectionComponent->clientFD, nameReply);
+
+		std::string endOfNamesReply = ":ircserv 366 " + clientProfileComponent->nickname + " " + targetChannelName + " :End of /NAMES list";
+		_server.getNetworkIOSystem().queueMessage(networkConnectionComponent->clientFD, endOfNamesReply);
 	}
 
 	_server.getLogManager().info("Client " + clientProfileComponent->nickname + " joined channel " + targetChannelName);

@@ -1,11 +1,11 @@
 NAME = ircserv
-BOT_NAME = ircbot
+BONUS_NAME = ircbot
 
 CXX = c++
 CXXSTD = -std=c++98
 CXXFLAGS = -Wall -Wextra -Werror
 INCLUDE = -I./include -I./include/core -I./include/components -I./include/managers -I./include/systems
-BOT_INCLUDE = -I./bot
+BONUS_INCLUDE = -I./bonus
 
 SRCS = source/main.cpp \
        source/core/Server.cpp \
@@ -20,35 +20,35 @@ SRCS = source/main.cpp \
        source/systems/handlers/ChannelHandlers.cpp \
        source/systems/handlers/ModeHandlers.cpp
 
-BOT_SRCS = bot/main.cpp \
-           bot/IRCBOT.cpp
+BONUS_SRCS = bonus/main.cpp \
+           bonus/IRCBOT.cpp
 
 OBJS = $(patsubst source/%.cpp, object/%.o, $(SRCS))
-BOT_OBJS = $(patsubst bot/%.cpp, object/bot/%.o, $(BOT_SRCS))
+BONUS_OBJS = $(patsubst bonus/%.cpp, object/bonus/%.o, $(BONUS_SRCS))
 
 all: $(NAME)
 
 $(NAME): $(OBJS)
 	$(CXX) $(CXXSTD) $(CXXFLAGS) $(INCLUDE) $(OBJS) -o $(NAME)
 
-bonus: $(BOT_NAME)
+bonus: $(BONUS_NAME)
 
-$(BOT_NAME): $(BOT_OBJS)
-	$(CXX) $(CXXSTD) $(CXXFLAGS) $(BOT_INCLUDE) $(BOT_OBJS) -o $(BOT_NAME)
+$(BONUS_NAME): $(BONUS_OBJS)
+	$(CXX) $(CXXSTD) $(CXXFLAGS) $(BONUS_INCLUDE) $(BONUS_OBJS) -o $(BONUS_NAME)
 
 object/%.o: source/%.cpp
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXSTD) $(CXXFLAGS) $(INCLUDE) -c $< -o $@
 
-object/bot/%.o: bot/%.cpp
+object/bonus/%.o: bonus/%.cpp
 	@mkdir -p $(dir $@)
-	$(CXX) $(CXXSTD) $(CXXFLAGS) $(BOT_INCLUDE) -c $< -o $@
+	$(CXX) $(CXXSTD) $(CXXFLAGS) $(BONUS_INCLUDE) -c $< -o $@
 
 clean:
 	rm -rf object
 
 fclean: clean
-	rm -f $(NAME) $(BOT_NAME)
+	rm -f $(NAME) $(BONUS_NAME)
 
 re: fclean all
 

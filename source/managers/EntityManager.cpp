@@ -122,6 +122,7 @@ void EntityManager::destroyEntity(Entity entity)
 		_channelsByName.erase(channelName);
 	}
 
+	std::vector<Entity> emptyChannels;
 	std::map<Entity, ChannelRosterComponent>::iterator channelRosterIterator;
 
 	for(channelRosterIterator = _channelRosterComponents.begin(); channelRosterIterator != _channelRosterComponents.end(); channelRosterIterator++)
@@ -133,6 +134,10 @@ void EntityManager::destroyEntity(Entity entity)
 		if(foundIterator != channelRosterComponent.members.end())
 		{
 			channelRosterComponent.members.erase(foundIterator);
+			if(channelRosterComponent.members.empty())
+			{
+				emptyChannels.push_back(channelRosterIterator->first);
+			}
 		}
 
 		foundIterator = std::find(channelRosterComponent.operators.begin(), channelRosterComponent.operators.end(), entity);
@@ -154,6 +159,11 @@ void EntityManager::destroyEntity(Entity entity)
 	_clientProfileComponents.erase(entity);
 	_channelConfigComponents.erase(entity);
 	_channelRosterComponents.erase(entity);
+
+	for(size_t index = 0; index < emptyChannels.size(); index++)
+	{
+		destroyEntity(emptyChannels[index]);
+	}
 
 	return;
 }
